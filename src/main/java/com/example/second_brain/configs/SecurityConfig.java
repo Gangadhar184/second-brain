@@ -25,42 +25,30 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final UserService userService;
 
-    /**
-     * configure http security
-     * defines which endpoints are public and which require authentication
-     */
-
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity httpSecurity) throws Exception {
         httpSecurity
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         // Public endpoints
-                        .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/brain/*").permitAll()
+                        .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers("/api/v1/brain/*").permitAll()
                         // Private endpoints
-                        .requestMatchers("/brain/share").authenticated()
+                        .requestMatchers("/api/v1/brain/share").authenticated()
                         // Everything else requires authentication
                         .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider())
-                .addFilterBefore(
-                        jwtAuthenticationFilter,
-                        UsernamePasswordAuthenticationFilter.class
-                );
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+
         return httpSecurity.build();
-
     }
-
-    //password encoder bean, uses bcrypt hashing algorithm
 
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
-
-    //auth provider, tells spring security how to authenticate users
 
     @Bean
     public AuthenticationProvider authenticationProvider() {
@@ -70,18 +58,9 @@ public class SecurityConfig {
         return authProvider;
     }
 
-    /**
-     * Authentication manager bean
-     * Used in AuthService to authenticate users
-     *
-
-     */
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration config)
             throws Exception {
         return config.getAuthenticationManager();
     }
-
 }
-
-

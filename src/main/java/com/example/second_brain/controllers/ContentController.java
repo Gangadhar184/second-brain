@@ -14,7 +14,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/v1/contents")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class ContentController {
 
     private final ContentService contentService;
