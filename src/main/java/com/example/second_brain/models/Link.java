@@ -1,9 +1,6 @@
 package com.example.second_brain.models;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
+import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
@@ -14,7 +11,7 @@ import lombok.*;
 @Builder
 public class Link extends BaseModel{
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String hash;
     //Link will have userId: userRefernece
 
@@ -22,4 +19,10 @@ public class Link extends BaseModel{
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
+
+    //link can be tied to a single piece of contentn
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "content_id", nullable = true)
+    private Content content;
+
 }

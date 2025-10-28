@@ -14,6 +14,6 @@ public class LinkDto {
     private Long id;
     private String hash;
     private Long userId;
-
+    private String shareUrl;
 
 }

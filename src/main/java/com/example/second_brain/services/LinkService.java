@@ -3,7 +3,6 @@ package com.example.second_brain.services;
 import com.example.second_brain.dtos.ContentDto;
 import com.example.second_brain.dtos.LinkDto;
 import com.example.second_brain.dtos.TagDto;
-import com.example.second_brain.dtos.UserSummaryDto;
 import com.example.second_brain.models.Content;
 import com.example.second_brain.models.Link;
 import com.example.second_brain.models.User;
@@ -11,79 +10,127 @@ import com.example.second_brain.repositories.ContentRepository;
 import com.example.second_brain.repositories.LinkRepository;
 import com.example.second_brain.repositories.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.security.SecureRandom;
-import java.util.Base64;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class LinkService {
+
     private final LinkRepository linkRepository;
     private final UserRepository userRepository;
     private final ContentRepository contentRepository;
 
-    //we need hash id which will be uniquee
+    //  Base frontend URL for constructing public share links
+    private static final String FRONTEND_BASE_URL = "http://localhost:5173/share/";
 
-    private String generateHash() {
-        SecureRandom random = new SecureRandom();
-        byte[] bytes = new byte[6];
-        random.nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    public LinkDto createShareLink(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        String hash = generateUniqueHash();
+
+        Link link = Link.builder()
+                .hash(hash)
+                .user(user)
+                .content(null) // sharing all user's content
+                .build();
+
+        Link savedLink = linkRepository.save(link);
+
+        return LinkDto.builder()
+                .id(savedLink.getId())
+                .hash(savedLink.getHash())
+                .userId(user.getId())
+                .shareUrl(FRONTEND_BASE_URL + savedLink.getHash())
+                .build();
     }
 
-    // sharelink
-    public LinkDto createShareLink(Long userId) {
-        User user = userRepository.findById(userId).orElseThrow(()-> new RuntimeException("User not found") );
+    public LinkDto createContentShareLink(Long userId, Long contentId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        String hash;
-        do {
-            hash = generateHash();
-        }while (linkRepository.findByHash(hash).isPresent());
+        Content content = contentRepository.findById(contentId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Content not found"));
 
-        Link link = Link.builder().hash(hash).user(user).build();
-        Link saved = linkRepository.save(link);
-        LinkDto dto = new LinkDto();
-        dto.setId(saved.getId());
-        dto.setHash(saved.getHash());
-        dto.setUserId(saved.getUser().getId());
-        return dto;
+        if (!content.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not the owner of this content");
+        }
+
+        String hash = generateUniqueHash();
+
+        Link link = Link.builder()
+                .hash(hash)
+                .user(user)
+                .content(content)
+                .build();
+
+        Link savedLink = linkRepository.save(link);
+
+        return LinkDto.builder()
+                .id(savedLink.getId())
+                .hash(savedLink.getHash())
+                .userId(user.getId())
+                .shareUrl(FRONTEND_BASE_URL + savedLink.getHash())
+                .build();
+    }
+    public ContentDto getContentByHash(String hash) {
+        Link link = linkRepository.findByHash(hash)
+                .orElseThrow(() -> new RuntimeException("Invalid share link"));
+        Content content = link.getContent();
+
+        return ContentDto.builder()
+                .id(content.getId())
+                .title(content.getTitle())
+                .link(content.getLink())
+                .type(content.getType())
+                .tags(content.getTags().stream()
+                        .map(tag -> new TagDto(tag.getId(), tag.getTitle()))
+                        .collect(Collectors.toSet()))
+                .build();
     }
 
 
     public List<ContentDto> getSharedContent(String hash) {
         Link link = linkRepository.findByHash(hash)
-                .orElseThrow(() -> new RuntimeException("Invalid or expired share link"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invalid share link"));
 
-        User user = link.getUser();
-        Set<Content> contents = user.getContents();
+        if (link.getContent() != null) {
+            return List.of(toContentDto(link.getContent()));
+        }
 
-        return contents.stream().map(
-                content -> {
-                    ContentDto dto = new ContentDto();
-                    dto.setId(content.getId());
-                    dto.setLink(content.getLink());
-                    dto.setType(content.getType());
-                    dto.setTitle(content.getTitle());
-                    dto.setUser(new UserSummaryDto(user.getId(), user.getUsername()));
-
-                    Set<TagDto> tagDtos = content.getTags().stream().map(tag -> {
-                        TagDto tagDto = new TagDto();
-                        tagDto.setId(tag.getId());
-                        tagDto.setTitle(tag.getTitle());
-                        return tagDto;
-                    }).collect(Collectors.toSet());
-
-                    dto.setTags(tagDtos);
-                    return dto;
-                }
-        ).collect(Collectors.toList());
+        List<Content> userContents = contentRepository.findByUser(link.getUser());
+        return userContents.stream()
+                .map(this::toContentDto)
+                .collect(Collectors.toList());
     }
 
+    private String generateUniqueHash() {
+        String hash;
+        do {
+            hash = UUID.randomUUID().toString().substring(0, 8);
+        } while (linkRepository.findByHash(hash).isPresent());
+        return hash;
+    }
+
+    private ContentDto toContentDto(Content content) {
+        List<TagDto> tagDtos = content.getTags().stream()
+                .map(tag -> new TagDto(tag.getId(), tag.getTitle()))
+                .collect(Collectors.toList());
+
+        return ContentDto.builder()
+                .id(content.getId())
+                .title(content.getTitle())
+                .link(content.getLink())
+                .type(content.getType())
+                .tags(new HashSet<>(tagDtos))
+                .build();
+    }
 }
-
-
-
